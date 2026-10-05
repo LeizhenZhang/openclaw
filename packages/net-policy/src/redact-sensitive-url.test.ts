@@ -184,3 +184,51 @@ it("redacts repeatedly encoded sensitive query parameter names", () => {
     expectRedacted(exampleUrl(`?${encodeRepeatedly("%74oken", layers)}=SECRET`), ["SECRET"]);
   }
 });
+
+it.each([
+  "accessToken",
+  "AccessToken",
+  "accesstoken",
+  "access.token",
+  "refreshToken",
+  "idToken",
+  "authToken",
+  "clientSecret",
+  "clientsecret",
+  "appSecret",
+  "privateKey",
+  "apiKey",
+  "APIKey",
+  "hookToken",
+  "sessionToken",
+  "userPassword",
+  "secretKey",
+  "webhookSecret",
+  "urlSignature",
+  "bearerToken",
+  "token[]",
+  "token[0]",
+  "apiKey[]",
+])("matches credential spelling variant %s", (name) => {
+  expect(isSensitiveUrlQueryParamName(name)).toBe(true);
+});
+
+it.each([
+  "maxTokens",
+  "tokenCount",
+  "promptTokens",
+  "tokenizer",
+  "sortKey",
+  "cacheKey",
+  "partitionKey",
+  "sessionName",
+  "sessionId",
+  "userId",
+  "clientId",
+  "redirectUri",
+  "responseType",
+  "grantType",
+  "topK",
+])("does not match non-credential name %s", (name) => {
+  expect(isSensitiveUrlQueryParamName(name)).toBe(false);
+});
