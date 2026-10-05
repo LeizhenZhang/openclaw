@@ -131,6 +131,58 @@ describe("isSensitiveUrlQueryParamName", () => {
     expect(isSensitiveUrlQueryParamName("token_count")).toBe(false);
     expect(isSensitiveUrlQueryParamName("x-request-id")).toBe(false);
   });
+
+  // Only the snake_case spelling was recognized, so the camelCase spelling that
+  // most JSON/JS APIs actually emit carried its credential into logs.
+  it.each([
+    "accessToken",
+    "AccessToken",
+    "accesstoken",
+    "access.token",
+    "refreshToken",
+    "idToken",
+    "authToken",
+    "clientSecret",
+    "clientsecret",
+    "appSecret",
+    "privateKey",
+    "apiKey",
+    "APIKey",
+    "hookToken",
+    "sessionToken",
+    "userPassword",
+    "secretKey",
+    "webhookSecret",
+    "urlSignature",
+    "bearerToken",
+    "token[]",
+    "token[0]",
+    "apiKey[]",
+  ])("matches credential spelling variant %s", (name) => {
+    expect(isSensitiveUrlQueryParamName(name)).toBe(true);
+  });
+
+  // Collapsing spellings must not swallow the identifiers and counters a
+  // gateway needs to keep readable in its logs.
+  it.each([
+    "maxTokens",
+    "tokenCount",
+    "promptTokens",
+    "tokenizer",
+    "sortKey",
+    "cacheKey",
+    "partitionKey",
+    "sessionName",
+    "sessionId",
+    "userId",
+    "clientId",
+    "redirectUri",
+    "responseType",
+    "grantType",
+    "topK",
+  ])("does not match non-credential name %s", (name) => {
+    expect(isSensitiveUrlQueryParamName(name)).toBe(false);
+  });
 });
 
 describe("sensitive URL config metadata", () => {
