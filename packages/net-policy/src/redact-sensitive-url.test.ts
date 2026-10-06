@@ -232,3 +232,12 @@ it.each([
 ])("does not match non-credential name %s", (name) => {
   expect(isSensitiveUrlQueryParamName(name)).toBe(false);
 });
+
+it.each([
+  ["unclosed subscripts", `${"[".repeat(40_000)}token`],
+  ["uppercase run", "A".repeat(40_000)],
+])("classifies a long %s name in linear time", (_name, paramName) => {
+  const startedAt = performance.now();
+  isSensitiveUrlQueryParamName(paramName);
+  expect(performance.now() - startedAt).toBeLessThan(500);
+});
