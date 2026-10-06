@@ -78,25 +78,61 @@ function redactSensitiveUrlPath(value: string): string {
 }
 
 /**
+ * Drops array and index subscripts, which address the same parameter:
+ * `token[]`, `token[0]`.
+ *
+ * A forward scan rather than `/\[[^\]]*\]/g`: query names are unbounded here,
+ * and that expression rescans the remaining suffix at every `[` it cannot
+ * close, which is quadratic on input like `"[".repeat(n)`. Removing each `[`
+ * through the first following `]` matches what the expression accepted, and the
+ * cursor only moves forward.
+ */
+function stripUrlQueryParamSubscripts(name: string): string {
+  if (!name.includes("[")) {
+    return name;
+  }
+  let stripped = "";
+  let index = 0;
+  for (;;) {
+    const open = name.indexOf("[", index);
+    if (open < 0) {
+      return stripped + name.slice(index);
+    }
+    const close = name.indexOf("]", open + 1);
+    if (close < 0) {
+      return stripped + name.slice(index);
+    }
+    stripped += name.slice(index, open);
+    index = close + 1;
+  }
+}
+
+/**
  * Collapses spelling variants of one parameter name onto a single canonical
  * `_`-separated form, so `accessToken`, `access-token`, `access.token` and
  * `access_token[]` all compare equal to `access_token`. Without this the
  * snake_case name was redacted while the camelCase spelling that most JSON and
  * JS APIs actually use leaked the credential.
+ *
+ * Every step is linear in the name's length: logging and URL diagnostics call
+ * this synchronously on names no one has bounded.
  */
 function canonicalizeUrlQueryParamName(name: string): string {
-  return normalizeLowercaseStringOrEmpty(
-    name
-      // Array/index subscripts address the same parameter: `token[]`, `token[0]`.
-      .replace(/\[[^\]]*\]/gu, "")
-      // camelCase and PascalCase word starts: `accessToken`, `oauth2Token`.
-      .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1_$2")
-      // Trailing word after an acronym run: `APIKey` -> `API_Key`.
-      .replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, "$1_$2"),
-  )
-    .replace(/[-.]/gu, "_")
-    .replace(/_+/gu, "_")
-    .replace(/^_+|_+$/gu, "");
+  return (
+    normalizeLowercaseStringOrEmpty(
+      stripUrlQueryParamSubscripts(name)
+        // camelCase and PascalCase word starts: `accessToken`, `oauth2Token`.
+        .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1_$2")
+        // Trailing word after an acronym run: `APIKey` -> `API_Key`. The leading
+        // uppercase is a fixed-width lookbehind, not `\p{Lu}+`, so a long
+        // uppercase name has no run to backtrack through.
+        .replace(/(?<=\p{Lu})(\p{Lu}\p{Ll})/gu, "_$1"),
+    )
+      .replace(/[-.]/gu, "_")
+      // Collapse before trimming so the trim never sees a run to backtrack over.
+      .replace(/_+/gu, "_")
+      .replace(/^_+|_+$/gu, "")
+  );
 }
 
 function normalizeUrlQueryParamName(name: string): {

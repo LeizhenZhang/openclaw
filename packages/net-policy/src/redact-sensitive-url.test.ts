@@ -162,6 +162,18 @@ describe("isSensitiveUrlQueryParamName", () => {
     expect(isSensitiveUrlQueryParamName(name)).toBe(true);
   });
 
+  // Logging and URL diagnostics call this synchronously on names no one has
+  // bounded, so every normalization step has to stay linear. Both shapes below
+  // forced a quadratic suffix rescan while the name was being canonicalized.
+  it.each([
+    ["unclosed subscripts", `${"[".repeat(40_000)}token`],
+    ["uppercase run", "A".repeat(40_000)],
+  ])("classifies a long %s name in linear time", (_name, paramName) => {
+    const startedAt = performance.now();
+    isSensitiveUrlQueryParamName(paramName);
+    expect(performance.now() - startedAt).toBeLessThan(500);
+  });
+
   // Collapsing spellings must not swallow the identifiers and counters a
   // gateway needs to keep readable in its logs.
   it.each([
