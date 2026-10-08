@@ -135,8 +135,20 @@ function canonicalizeUrlQueryParamName(name: string): string {
   );
 }
 
+/**
+ * The pre-canonicalization spelling: lowercased with `-` mapped to `_`.
+ * Recognition also runs on this form so that splitting camelCase can never
+ * make a name that used to be redacted stop matching. Splitting a digit from an
+ * uppercase letter turns `token_0123456789ABCDEF` into `token_0123456789_abcdef`,
+ * which the scoped-token suffix no longer accepts.
+ */
+function legacyUrlQueryParamName(name: string): string {
+  return normalizeLowercaseStringOrEmpty(name).replaceAll("-", "_");
+}
+
 function normalizeUrlQueryParamName(name: string): {
   value: string;
+  legacyValue: string;
   unresolvedEncoding: boolean;
 } {
   let current = name.replace(URL_QUERY_NAME_SEPARATOR_RE, "");
@@ -148,12 +160,17 @@ function normalizeUrlQueryParamName(name: string): {
       break;
     }
     if (decoded === current) {
-      return { value: canonicalizeUrlQueryParamName(current), unresolvedEncoding: false };
+      return {
+        value: canonicalizeUrlQueryParamName(current),
+        legacyValue: legacyUrlQueryParamName(current),
+        unresolvedEncoding: false,
+      };
     }
     current = decoded;
   }
   return {
     value: canonicalizeUrlQueryParamName(current),
+    legacyValue: legacyUrlQueryParamName(current),
     unresolvedEncoding: current.includes("%"),
   };
 }
@@ -184,7 +201,10 @@ export function isSensitiveUrlQueryParamName(name: string): boolean {
     return true;
   }
   const canonical = normalized.value;
+  const legacy = normalized.legacyValue;
   return (
+    SENSITIVE_URL_QUERY_PARAM_NAMES.has(legacy) ||
+    SUFFIXED_OR_SCOPED_TOKEN_QUERY_PARAM_RE.test(legacy) ||
     SENSITIVE_URL_QUERY_PARAM_NAMES.has(canonical) ||
     SENSITIVE_URL_QUERY_PARAM_NAMES_WITHOUT_SEPARATORS.has(canonical.replaceAll("_", "")) ||
     SUFFIXED_OR_SCOPED_TOKEN_QUERY_PARAM_RE.test(canonical) ||
