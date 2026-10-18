@@ -57,6 +57,28 @@ const SENSITIVE_URL_QUERY_PARAM_SEGMENT_WORDS = new Set([
   "jwt",
   "bearer",
 ]);
+// Words that describe a credential instead of carrying one: `signature_algorithm`
+// names the algorithm, `SignatureVersion=2` the signing protocol. The segment rule
+// above would read the `signature` in them as a credential marker and mask the
+// diagnostic, which https://github.com/openclaw/openclaw/pull/116957 kept readable
+// when it unified credential-query classification. Only the segment rule consults
+// this: an exact name such as `signature` stays redacted.
+const CREDENTIAL_METADATA_SEGMENT_WORDS = new Set([
+  "algorithm",
+  "algo",
+  "method",
+  "scheme",
+  "version",
+  "type",
+  "format",
+  "encoding",
+  "expiry",
+  "expires",
+  "expiration",
+  "ttl",
+  "length",
+  "count",
+]);
 // Align with FORM_BODY_KEY_SEPARATOR_RE: category-Lo Hangul fillers can splice sensitive names.
 const URL_QUERY_NAME_SEPARATOR_RE = /[\p{C}\p{Z}\u115F\u1160\u3164\uFFA0+]/gu;
 // Proxy and per-resource bearer URLs may prefix a token key or suffix it with a random hex id.
@@ -194,6 +216,22 @@ function looksLikeNestedUrlValue(value: string): boolean {
   return /%[\da-f]{2}/iu.test(value);
 }
 
+/**
+ * True when a canonical name carries a credential marker as a whole segment and
+ * no segment turns the name into metadata about that credential. One pass over
+ * the segments, so a long name cannot cost more than its length.
+ */
+function hasSensitiveSegmentWord(canonical: string): boolean {
+  let marked = false;
+  for (const segment of canonical.split("_")) {
+    if (CREDENTIAL_METADATA_SEGMENT_WORDS.has(segment)) {
+      return false;
+    }
+    marked ||= SENSITIVE_URL_QUERY_PARAM_SEGMENT_WORDS.has(segment);
+  }
+  return marked;
+}
+
 /** True for auth-like URL query parameter names that should be redacted. */
 export function isSensitiveUrlQueryParamName(name: string): boolean {
   const normalized = normalizeUrlQueryParamName(name);
@@ -208,7 +246,7 @@ export function isSensitiveUrlQueryParamName(name: string): boolean {
     SENSITIVE_URL_QUERY_PARAM_NAMES.has(canonical) ||
     SENSITIVE_URL_QUERY_PARAM_NAMES_WITHOUT_SEPARATORS.has(canonical.replaceAll("_", "")) ||
     SUFFIXED_OR_SCOPED_TOKEN_QUERY_PARAM_RE.test(canonical) ||
-    canonical.split("_").some((segment) => SENSITIVE_URL_QUERY_PARAM_SEGMENT_WORDS.has(segment))
+    hasSensitiveSegmentWord(canonical)
   );
 }
 

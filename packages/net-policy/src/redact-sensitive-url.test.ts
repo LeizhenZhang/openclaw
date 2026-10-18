@@ -43,6 +43,16 @@ describe("redactSensitiveUrl", () => {
     ).toBe("https://example.com/?token_0123456789ABCDEF=***&mms_token_ABCDEF0123456789=***&page=2");
   });
 
+  it("masks a signature while keeping the signing metadata beside it readable", () => {
+    expect(
+      redactSensitiveUrl(
+        "https://example.com/?signature_algorithm=HMAC-SHA256&SignatureVersion=2&signature=synthetic-secret&page=2",
+      ),
+    ).toBe(
+      "https://example.com/?signature_algorithm=HMAC-SHA256&SignatureVersion=2&signature=***&page=2",
+    );
+  });
+
   it("redacts Telegram bot tokens from URL paths", () => {
     expect(
       redactSensitiveUrl(
@@ -201,6 +211,23 @@ describe("isSensitiveUrlQueryParamName", () => {
     "grantType",
     "topK",
   ])("does not match non-credential name %s", (name) => {
+    expect(isSensitiveUrlQueryParamName(name)).toBe(false);
+  });
+
+  // A credential word plus a descriptor names a property of the credential, not the
+  // credential: #116957 unified credential-query classification while keeping
+  // `signature_algorithm` readable, and AWS query auth sends `SignatureVersion=2` and
+  // `SignatureMethod=HmacSHA256` in the clear beside the signature itself.
+  it.each([
+    "signature_algorithm",
+    "signatureAlgorithm",
+    "SignatureVersion",
+    "signature_method",
+    "secret_version",
+    "passwordExpiresIn",
+    "credential_type",
+    "jwt_encoding",
+  ])("keeps credential metadata name %s readable", (name) => {
     expect(isSensitiveUrlQueryParamName(name)).toBe(false);
   });
 });
