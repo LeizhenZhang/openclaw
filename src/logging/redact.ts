@@ -22,6 +22,7 @@ import {
 } from "./redact-json.js";
 import { LINEAR_MATCHER_SOURCES } from "./redact-linear-matchers.js";
 import {
+  clampEditsToEnclosingString,
   maskToken,
   maskSecretValue,
   splitSecretValueForMask,
@@ -1024,7 +1025,7 @@ const preparationPatterns: ResolvedRedactPattern[] = [
     *exec(input) {
       const edits: RedactionEdit[] = [];
       redactAssignmentValues(input, "url", (added) => edits.push(...added));
-      yield* redactionEditMatches(input, edits);
+      yield* redactionEditMatches(input, clampEditsToEnclosingString(input, edits, maskToken));
     },
   },
   {
@@ -1034,7 +1035,10 @@ const preparationPatterns: ResolvedRedactPattern[] = [
       redactFormBody(input, (added) => {
         edits = composeRedactionEdits(input.length, edits, added);
       });
-      yield* redactionEditMatches(input, edits);
+      yield* redactionEditMatches(
+        input,
+        clampEditsToEnclosingString(input, edits, () => "***"),
+      );
     },
   },
 ];

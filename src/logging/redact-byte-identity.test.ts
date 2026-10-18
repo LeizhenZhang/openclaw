@@ -12,9 +12,13 @@ import {
 // Recorded outputs from the pre-fix implementation (git HEAD before the boundary-leak fix)
 // over a deterministic corpus. Whole-text matching must keep every text under the old
 // 32,768-character slicing threshold byte-identical through each entry point.
-// One sample (index 221) was re-recorded when query-parameter name matching started
-// collapsing spelling variants: a name ending in `_secret` is now recognized, so that
-// sample's value is masked rather than passed through.
+// Three rows were re-recorded:
+// - 221, every column: query-parameter name matching now collapses spelling variants, so
+//   this sample's `_secret`-suffixed name is recognized and its value is masked rather than
+//   passed through.
+// - 11, 97 and 221, the log-record column: masking a trailing assignment no longer runs past
+//   the message into the next field, so `"level":"info"` survives where the recording had
+//   `"***":"***"`.
 type Fixture = {
   samples: string[];
   outputs: [string, string, string][];
@@ -35,6 +39,21 @@ it("fixture is present and bounded by the old slicing threshold", () => {
   expect(fixture.samples.length).toBeGreaterThan(200);
   for (const sample of fixture.samples) {
     expect(sample.length).toBeLessThanOrEqual(32_768);
+  }
+});
+
+// A trailing `key=value` carried its mask past the message: in the serialized record the
+// value ran through the closing quote into the next field, and `"level":"info"` came back
+// as `"***":"***"`, losing the severity every log consumer reads. `token` and
+// `client_secret` reached that boundary before spelling variants did.
+it("keeps the following log field when masking a trailing assignment", () => {
+  for (const key of ["token", "client_secret", "jclient%5Fsecret"]) {
+    expect(
+      redactLogRecordForTransport({
+        message: `visit https://example.test/x?${key}=opaquevalue12345`,
+        level: "info",
+      }),
+    ).toStrictEqual({ message: `visit https://example.test/x?${key}=***`, level: "info" });
   }
 });
 
