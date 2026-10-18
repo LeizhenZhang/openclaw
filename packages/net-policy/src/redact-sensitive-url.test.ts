@@ -249,3 +249,24 @@ it("keeps redacting scoped token params whose hex suffix mixes digits and upperc
     ),
   ).toBe("https://example.com/?token_0123456789ABCDEF=***&mms_token_ABCDEF0123456789=***&page=2");
 });
+
+it("masks a signature while keeping the signing metadata beside it readable", () => {
+  expect(
+    redactSensitiveUrl(
+      "https://example.com/?signature_algorithm=HMAC-SHA256&SignatureVersion=2&signature=synthetic-secret&page=2",
+    ),
+  ).toBe("https://example.com/?signature_algorithm=HMAC-SHA256&SignatureVersion=2&signature=***&page=2");
+});
+
+it.each([
+  "signature_algorithm",
+  "signatureAlgorithm",
+  "SignatureVersion",
+  "signature_method",
+  "secret_version",
+  "passwordExpiresIn",
+  "credential_type",
+  "jwt_encoding",
+])("keeps credential metadata name %s readable", (name) => {
+  expect(isSensitiveUrlQueryParamName(name)).toBe(false);
+});
