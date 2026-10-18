@@ -533,12 +533,17 @@ function prepareRedactionCapture(
     value: selected.value,
     redact: (target) => {
       const token = target.value;
+      const formPair = splitFormAwareCredentialValue(token);
       const formAwareValue = formAwareEqualsAssignmentPatterns.has(pattern)
-        ? splitFormAwareCredentialValue(token)
+        ? formPair
         : { secret: token, suffix: "" };
       // An earlier pass (form-body or quoted-assignment masking) may already have replaced this
-      // value with ***; re-masking would strip its quote wrapper around the placeholder.
-      if (splitSecretValueForMask(formAwareValue.secret).maskable === "***") {
+      // value with ***; re-masking would strip its quote wrapper around the placeholder. Look at
+      // the first form pair rather than the whole token, which the pattern's own split may not
+      // have narrowed: in `key=***&next=1` the placeholder sits behind the next pair, and
+      // re-masking from there hides the readable pairs that follow a credential the assignment
+      // rules have already masked.
+      if (splitSecretValueForMask(formPair.secret).maskable === "***") {
         return undefined;
       }
       const isShellReferencePattern = shellReferencePreservingPatterns.has(pattern);

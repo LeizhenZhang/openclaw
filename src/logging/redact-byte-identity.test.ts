@@ -71,6 +71,10 @@ it("redacts short texts byte-identically to the pre-fix implementation", () => {
 
 it("preserves baseline bytes across secret families, near misses, and ordered compositions", () => {
   // Recorded from the untouched baseline named in the fixture, before prefilter changes.
+  // One case ("family/form first pair/wrapped") was re-recorded: `prefix_password` is now
+  // recognized as a credential name, so the assignment rules mask its value before the password
+  // family sees it, and the pairs after it stay readable instead of joining one hinted mask that
+  // kept the secret's first six characters.
   // The retired model-visible output was removed after verifying the original hashes.
   // Hash the remaining outputs together to keep the six-mode corpus small without
   // deriving expected values from the current implementation or storing masked duplicates.
