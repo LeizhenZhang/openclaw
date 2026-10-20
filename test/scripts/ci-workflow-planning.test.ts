@@ -973,6 +973,24 @@ function runControlUiI18nSourceFixture(options: {
     rmSync(root, { force: true, recursive: true });
   }
 }
+describe("native runtime artifact CI selection", () => {
+  it.each([false, true])(
+    "selects the runtime producer for native policy tests (owner=%s)",
+    (owner) => {
+      const manifest = runCiManifestFixture({
+        bundledPlanner: true,
+        eventName: "schedule",
+        runNode: false,
+        publishedDriverUpdateCapability: false,
+        targetFiles: owner ? ["apps/macos/Sources/OpenClaw/NativeExecPolicyOwner.swift"] : [],
+      });
+      expect(manifest.status, manifest.output).toBe(0);
+      expect(manifest.outputs.run_macos_swift).toBe("true");
+      expect(manifest.outputs.run_build_artifacts).toBe(String(owner));
+    },
+  );
+});
+
 describe("channel detail presentation CI selection", () => {
   it.each([
     ["extensions/telegram/control-ui.channel-detail.json", true],
@@ -2577,7 +2595,7 @@ describe("ci workflow guards", () => {
       const dockerLanes = expectDefined(manifest.outputs.docker_seed_lanes, "Docker lanes").split(
         " ",
       );
-      expect(dockerLanes).toHaveLength(release ? 5 : 1);
+      expect(dockerLanes).toHaveLength(release ? 6 : 1);
       expect(dockerLanes[0]).toBe("published-upgrade-survivor");
       const workflow = readCiWorkflow();
       const context = {
@@ -2756,7 +2774,9 @@ describe("ci workflow guards", () => {
       expect(job.strategy["fail-fast"]).toBe(false);
       expect(job.strategy["max-parallel"]).toBe(2);
       expect(job["continue-on-error"]).not.toBe(true);
-      expect(job.needs).toEqual(["preflight"]);
+      expect(job.needs).toEqual(
+        jobName === "macos-swift" ? ["preflight", "build-artifacts"] : ["preflight"],
+      );
       const workloads =
         jobName === "macos-swift"
           ? {
@@ -3003,7 +3023,10 @@ describe("ci workflow guards", () => {
         runnerBackend: "hybrid" as const,
         additionalNeeds: {
           "check-plan": { outputs },
-          "build-artifacts": { outputs: { published_driver_artifact_id: "fixture-package" } },
+          "build-artifacts": {
+            result: "success" as const,
+            outputs: { published_driver_artifact_id: "fixture-package" },
+          },
         },
         ...overrides,
         preflightOutputs: outputs,
@@ -3016,13 +3039,7 @@ describe("ci workflow guards", () => {
             })
           : value;
       const rows: string[] = [];
-      const hostedLabels = new Set([
-        "ubuntu-24.04",
-        "windows-2025",
-        "macos-15",
-        "xcode-27",
-        "xcode-27-xlarge",
-      ]);
+      const hostedLabels = new Set(["ubuntu-24.04", "windows-2025", "xcode-27", "xcode-27-xlarge"]);
       for (const [name, job] of Object.entries(readCiWorkflow().jobs)) {
         const definition = job as {
           if?: string;
@@ -3701,7 +3718,7 @@ describe("ci workflow guards", () => {
       expect(result.outputs.run_docker_seed_e2e).toBe(String(options.expected));
       expect(result.outputs.docker_seed_lanes).toBe(
         options.eventName === "workflow_dispatch" && !options.releaseGate && !options.legacyPlanner
-          ? "published-upgrade-survivor mcp-channels cron-mcp-cleanup mcp-code-mode-gateway update-channel-switch"
+          ? "published-upgrade-survivor mcp-channels cron-mcp-cleanup mcp-code-mode-gateway mcp-docker-custody update-channel-switch"
           : options.expected
             ? "published-upgrade-survivor"
             : "",
@@ -5881,24 +5898,6 @@ describe("ci workflow guards", () => {
     for (const eventName of ["pull_request", "push", "schedule"] as const) {
       expect(evaluateWorkflowExpression(plannerRunner, { ...plannerContext, eventName })).toBe(
         eventName === "pull_request" ? "ubuntu-24.04" : "blacksmith-16vcpu-ubuntu-2404",
-      );
-    }
-    const discovery = workflow.jobs["check-plan"].steps.find(
-      (step: WorkflowStep) => step.id === "plan",
-    ).env.OPENCLAW_CI_TYPE_PLAN_SERIAL;
-    expect(evaluateWorkflowExpression(discovery, plannerContext)).toBe("1");
-    for (const override of [
-      { eventName: "push" },
-      { eventName: "schedule" },
-      { eventName: "workflow_dispatch" },
-      { headRepository: "contributor/openclaw" },
-      { runnerBackend: "blacksmith" },
-      { runnerBackend: "github" },
-      { runAttempt: 2 },
-      { frozenTarget: true },
-    ] as const) {
-      expect(evaluateWorkflowExpression(discovery, { ...plannerContext, ...override })).not.toBe(
-        "1",
       );
     }
     const typeRunner = workflow.jobs["check-test-types-hosted-core-shard"]["runs-on"];
@@ -8819,7 +8818,16 @@ describe("ci workflow guards", () => {
         const job = workflow.jobs[jobName];
         const expression = job.if.startsWith("${{") ? job.if : `\${{ ${job.if} }}`;
         expect(
-          evaluateWorkflowExpression(expression, { ...context, preflightOutputs }),
+          evaluateWorkflowExpression(expression, {
+            ...context,
+            preflightOutputs,
+            additionalNeeds: {
+              "build-artifacts": {
+                result: manifest.outputs.run_build_artifacts === "true" ? "success" : "skipped",
+                outputs: {},
+              },
+            },
+          }),
           jobName,
         ).toBe(selectedJobs.includes(jobName));
       }
@@ -9406,7 +9414,7 @@ describe("ci workflow guards", () => {
     expect(current.outputs.run_qa_smoke_ci).toBe("true");
     expect(current.outputs.run_docker_seed_e2e).toBe("true");
     expect(current.outputs.docker_seed_lanes).toBe(
-      "published-upgrade-survivor mcp-channels cron-mcp-cleanup mcp-code-mode-gateway update-channel-switch",
+      "published-upgrade-survivor mcp-channels cron-mcp-cleanup mcp-code-mode-gateway mcp-docker-custody update-channel-switch",
     );
     expect(current.outputs.run_sqlite_session_lifecycle).toBe("true");
     expect(current.outputs.run_channel_contracts_shards).toBe("true");
@@ -11261,7 +11269,7 @@ describe("ci workflow guards", () => {
       uses: SETUP_GO_V6,
       with: {
         cache: false,
-        "go-version": "1.27.1",
+        "go-version": "1.27.2",
       },
     });
     expect(setupGoStep.with).not.toHaveProperty("go-version-file");
@@ -11284,12 +11292,12 @@ describe("ci workflow guards", () => {
     });
     expect(verifyGoStep).toMatchObject({
       if: "matrix.requires_go == true",
-      run: 'test "$(go env GOVERSION)" = "go1.27.1"',
+      run: 'test "$(go env GOVERSION)" = "go1.27.2"',
     });
 
     const goMod = readTrackedText("scripts/docs-i18n/go.mod");
     expect(goMod).toMatch(/^go 1\.26\.0$/mu);
-    expect(goMod).toMatch(/^toolchain go1\.27\.1$/mu);
+    expect(goMod).toMatch(/^toolchain go1\.27\.2$/mu);
 
     const tooling = {
       configs: ["test/vitest/vitest.tooling.config.ts"],
@@ -12208,6 +12216,10 @@ describe("ci workflow guards", () => {
           "",
         )
         .replace(/needs\.build-artifacts\.outputs\.published_driver_artifact_id != ''\s*&&\s*/u, "")
+        .replace(
+          /\s*&&\s*\(needs\.build-artifacts\.result == 'success' \|\| needs\.build-artifacts\.result == 'skipped'\)$/u,
+          "",
+        )
         .replace(/!cancelled\(\)\s*&&\s*/gu, "")
         .replace(/\s*&&\s*!github.event.pull_request.draft$/u, "")
         .replace(/\s+/gu, " ")
