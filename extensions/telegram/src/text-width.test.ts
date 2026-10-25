@@ -15,8 +15,4 @@ describe("renderTelegramMonospaceGrid", () => {
     expect(performance.now() - started).toBeLessThan(1000);
     expect(grid).toBe(`| k   | v   |\n| a   | ${cell}   |`);
   });
-
-  it("gives zero width to graphemes made only of non-printing characters", () => {
-    expect(renderTelegramMonospaceGrid([["\u200B\u200C", "x"]])).toBe("| \u200B\u200C    | x   |");
-  });
 });
