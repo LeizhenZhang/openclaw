@@ -10,7 +10,10 @@ import {
 } from "../../test-utils/gateway-scheduler-clock.js";
 import { createGatewayEventLoopHealthMonitor } from "./event-loop-health.js";
 
-vi.mock("../../infra/host-cpu-times.js", () => ({ readHostCpuTimes: vi.fn() }));
+vi.mock("../../infra/host-cpu-times.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../infra/host-cpu-times.js")>()),
+  readHostCpuTimes: vi.fn(),
+}));
 vi.mock("node:worker_threads", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:worker_threads")>()),
   isMainThread: true,
