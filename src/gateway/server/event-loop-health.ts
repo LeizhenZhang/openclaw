@@ -1,4 +1,4 @@
-import { cpus, type CpuInfo } from "node:os";
+import type { CpuInfo } from "node:os";
 import { monitorEventLoopDelay, performance, type ELDHistogram } from "node:perf_hooks";
 import { isMainThread, Worker } from "node:worker_threads";
 import type { Static } from "typebox";
@@ -14,6 +14,7 @@ import {
 } from "../../infra/diagnostic-events.js";
 import { runWithDiagnosticTraceContext } from "../../infra/diagnostic-trace-context.js";
 import type { GatewayScheduler } from "../../infra/gateway-scheduler.js";
+import { readHostCpuTimes as readHostCpuCounters } from "../../infra/host-cpu-times.js";
 import { createMainThreadStallMonitor } from "../../infra/main-thread-stall.js";
 import { getTrackedWorkerCpuSources } from "../../infra/worker-cpu.js";
 import { roundDiagnosticMetric as roundMetric } from "../../logging/diagnostic-metric.js";
@@ -77,7 +78,7 @@ function isValidCpuUsage(usage: NodeJS.CpuUsage | undefined): usage is NodeJS.Cp
 
 function readHostCpuTimes(): CpuInfo["times"][] | undefined {
   try {
-    const times = cpus().map((cpu) => cpu.times);
+    const times = readHostCpuCounters();
     return times.length ? times : undefined;
   } catch {
     return undefined;

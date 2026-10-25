@@ -1,7 +1,7 @@
-import { cpus } from "node:os";
 import { performance } from "node:perf_hooks";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readHostCpuTimes } from "../../infra/host-cpu-times.js";
 import { getTrackedWorkerCpuSources } from "../../infra/worker-cpu.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import {
@@ -10,10 +10,7 @@ import {
 } from "../../test-utils/gateway-scheduler-clock.js";
 import { createGatewayEventLoopHealthMonitor } from "./event-loop-health.js";
 
-vi.mock("node:os", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:os")>()),
-  cpus: vi.fn(),
-}));
+vi.mock("../../infra/host-cpu-times.js", () => ({ readHostCpuTimes: vi.fn() }));
 vi.mock("node:worker_threads", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:worker_threads")>()),
   isMainThread: true,
@@ -29,7 +26,7 @@ const workerUsage = vi.fn<() => Promise<NodeJS.CpuUsage | undefined>>();
 const mainThreadUsage = vi.fn<() => NodeJS.CpuUsage>();
 
 function hostCpu(user: number, idle: number) {
-  return { model: "test", speed: 1, times: { user, idle, nice: 0, sys: 0, irq: 0 } };
+  return { user, idle, nice: 0, sys: 0, irq: 0 };
 }
 
 beforeEach(() => {
@@ -56,7 +53,7 @@ beforeEach(() => {
   }));
   mainThreadUsage.mockReset().mockImplementation(() => ({ user: now * 250, system: 0 }));
   vi.spyOn(process, "threadCpuUsage").mockImplementation(mainThreadUsage);
-  vi.mocked(cpus)
+  vi.mocked(readHostCpuTimes)
     .mockReset()
     .mockImplementation(() => [hostCpu(now, 0), hostCpu(now / 2, now / 2)]);
 });
@@ -103,26 +100,28 @@ describe("CPU breakdown sampling", () => {
     if (runtime === "Bun") {
       expect(workerUsage).not.toHaveBeenCalled();
     }
-    const counts = [workerUsage.mock.calls.length, vi.mocked(cpus).mock.calls.length];
+    const counts = [workerUsage.mock.calls.length, vi.mocked(readHostCpuTimes).mock.calls.length];
     for (let index = 0; index < 50; index++) {
       expect(monitor.snapshot()).toBe(snapshot);
       monitor.persistentDegradationSnapshot();
     }
-    expect([workerUsage.mock.calls.length, vi.mocked(cpus).mock.calls.length]).toEqual(counts);
+    expect([workerUsage.mock.calls.length, vi.mocked(readHostCpuTimes).mock.calls.length]).toEqual(
+      counts,
+    );
   });
 
   it("keeps collection failures unavailable and requires fresh windows on recovery", async () => {
     mainThreadUsage.mockImplementation(() => {
       throw new Error("unsupported");
     });
-    vi.mocked(cpus).mockReturnValue([]);
+    vi.mocked(readHostCpuTimes).mockReturnValue([]);
     workerUsage.mockResolvedValue(undefined);
     const monitor = await createMonitor();
     await sample();
     expect(monitor.snapshot()).toMatchObject({ cpuCoreRatio: 2, cpuBreakdown: {} });
     expect(Object.keys(monitor.snapshot()!.cpuBreakdown!)).toEqual([]);
     mainThreadUsage.mockImplementation(() => ({ user: now * 250, system: 0 }));
-    vi.mocked(cpus).mockImplementation(() => [hostCpu(now, now)]);
+    vi.mocked(readHostCpuTimes).mockImplementation(() => [hostCpu(now, now)]);
     workerUsage.mockImplementation(async () => ({ user: now * 500, system: 0 }));
     await sample();
     expect(monitor.snapshot()?.cpuBreakdown).toEqual({ hostCpuCount: 1 });
@@ -141,19 +140,19 @@ describe("CPU breakdown sampling", () => {
     async (failure) => {
       const monitor = await createMonitor();
       if (failure === "counter rollback") {
-        vi.mocked(cpus).mockReturnValue([hostCpu(0, 0), hostCpu(0, 0)]);
+        vi.mocked(readHostCpuTimes).mockReturnValue([hostCpu(0, 0), hostCpu(0, 0)]);
       }
       if (failure === "topology change") {
-        vi.mocked(cpus).mockReturnValue([hostCpu(now + 1_000, 0)]);
+        vi.mocked(readHostCpuTimes).mockReturnValue([hostCpu(now + 1_000, 0)]);
       }
       if (failure === "no ticks") {
-        vi.mocked(cpus).mockReturnValue([hostCpu(now, 0), hostCpu(now / 2, now / 2)]);
+        vi.mocked(readHostCpuTimes).mockReturnValue([hostCpu(now, 0), hostCpu(now / 2, now / 2)]);
       }
       if (failure === "invalid ticks") {
-        vi.mocked(cpus).mockReturnValue([hostCpu(Number.NaN, 0)]);
+        vi.mocked(readHostCpuTimes).mockReturnValue([hostCpu(Number.NaN, 0)]);
       }
       if (failure === "throw") {
-        vi.mocked(cpus).mockImplementation(() => {
+        vi.mocked(readHostCpuTimes).mockImplementation(() => {
           throw new Error("unavailable");
         });
       }
