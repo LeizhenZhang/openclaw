@@ -363,6 +363,32 @@ describe("resolveMentions", () => {
       );
       expect(result.wasMentioned).toBe(false);
     });
+
+    it("reads the last matrix.to href in the tag and the label up to the first </a>", () => {
+      expect(
+        resolveFormatted(
+          "@bot: hello",
+          '<A class="x" HREF=\'https://example.com\' href="https://matrix.to/#/@bot:matrix.org">@bot</A></a>: hello',
+        ).wasMentioned,
+      ).toBe(true);
+      expect(
+        resolveFormatted(
+          "hello",
+          '<a href="https://matrix.to/#/@bot:matrix.org" href="https://matrix.to/#/@other:matrix.org">@bot</a>',
+        ).wasMentioned,
+      ).toBe(false);
+    });
+
+    it("returns promptly for many unterminated matrix.to anchors and tag-like labels", () => {
+      // The former anchor regex retried every `href=` from every `<a` start, and the label
+      // tag strip re-scanned the rest of the label from every `<`.
+      const unterminated = '<a href="https://matrix.to/#'.repeat(600);
+      const label = `<a href="https://matrix.to/#/@bot:matrix.org">${"<".repeat(40_000)}</a>`;
+      const started = performance.now();
+      expect(resolveFormatted("hello", unterminated).wasMentioned).toBe(false);
+      expect(resolveFormatted("hello", label).wasMentioned).toBe(false);
+      expect(performance.now() - started).toBeLessThan(500);
+    });
   });
 
   describe("regex patterns", () => {
