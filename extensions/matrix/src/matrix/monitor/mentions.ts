@@ -27,7 +27,8 @@ function stripHtmlTags(value: string): string {
  * `/<a\b[^>]*href=(["'])(https:\/\/matrix\.to\/#[^"']+)\1[^>]*>(.*?)<\/a>/gis`: the last
  * usable `href=` inside the opening tag wins, the quoted value may contain `>`, and the
  * label ends at the first `</a>`. Each `<a` start is resolved from precomputed next-`>`,
- * next-quote and next-`</a>` positions, so sender-controlled HTML stays linear.
+ * next-quote and next-`</a>` positions plus a forward-only candidate cursor, so the scan
+ * is linear in the length of sender-controlled HTML.
  */
 function* matrixToAnchors(html: string): Generator<{ href: string; label: string }> {
   const length = html.length;
@@ -70,6 +71,9 @@ function* matrixToAnchors(html: string): Generator<{ href: string; label: string
     });
   }
   let resumeAt = 0;
+  // Count of candidates starting at or before the current tag's last usable index. That
+  // index never decreases from one `<a` to the next, so the cursor only moves forward.
+  let candidatesBefore = 0;
   for (const open of html.matchAll(/<a\b/gi)) {
     if (open.index < resumeAt) {
       continue;
@@ -77,17 +81,13 @@ function* matrixToAnchors(html: string): Generator<{ href: string; label: string
     // `[^>]*` before `href=`: any characters except `>`.
     const firstStart = open.index + open[0].length;
     const lastStart = nextGt[firstStart]! - 1;
-    let low = 0;
-    let high = candidates.length;
-    while (low < high) {
-      const mid = (low + high) >>> 1;
-      if (candidates[mid]!.start <= lastStart) {
-        low = mid + 1;
-      } else {
-        high = mid;
-      }
+    while (
+      candidatesBefore < candidates.length &&
+      candidates[candidatesBefore]!.start <= lastStart
+    ) {
+      candidatesBefore += 1;
     }
-    const candidate = candidates[low - 1];
+    const candidate = candidates[candidatesBefore - 1];
     if (candidate && candidate.start >= firstStart) {
       yield {
         href: candidate.href,

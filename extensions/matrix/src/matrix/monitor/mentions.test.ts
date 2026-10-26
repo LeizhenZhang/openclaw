@@ -389,6 +389,17 @@ describe("resolveMentions", () => {
       expect(resolveFormatted("hello", label).wasMentioned).toBe(false);
       expect(performance.now() - started).toBeLessThan(500);
     });
+
+    it("finds the bot anchor after many empty <a> tags and non-bot anchors", () => {
+      // Every empty `<a>` looks up href candidates before any anchor matches.
+      const others = '<a href="https://matrix.to/#/@other:matrix.org">other</a>'.repeat(5_000);
+      const prefix = `${"<a>".repeat(5_000)}${others}`;
+      const botAnchor = '<a href="https://matrix.to/#/@bot:matrix.org">@bot</a>';
+      const started = performance.now();
+      expect(resolveFormatted("hello", `${prefix}${botAnchor}`).hasExplicitMention).toBe(true);
+      expect(resolveFormatted("hello", prefix).wasMentioned).toBe(false);
+      expect(performance.now() - started).toBeLessThan(500);
+    });
   });
 
   describe("regex patterns", () => {
