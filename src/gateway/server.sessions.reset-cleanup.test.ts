@@ -216,20 +216,20 @@ const closedAcpKeys = () =>
 
 test("sessions.reset preempts the controller run and clears queues", async () => {
   const { activeRun, storePath } = await seedWaitingActiveMainSession();
-  const parentGrant = RESET_PARENT_GRANT_FIXTURE;
   const preferences = {
     responseUsage: "tokens",
     pinnedAt: 123,
     label: "Operator session",
     category: "Operator group",
     icon: "🦞",
+    color: "blue",
     boardFace: "dashboard",
     boardPresentation: "expanded",
     visibility: "draft",
   } satisfies Partial<InternalSessionEntry>;
   await upsertSessionEntryCore(
     { storePath, sessionKey: "agent:main:main" },
-    { ...parentGrant, ...preferences },
+    { ...RESET_PARENT_GRANT_FIXTURE, ...preferences },
   );
   for (const sessionKey of ["main", "agent:main:main", "sess-main"]) {
     enqueueSystemEvent(`stale event via ${sessionKey}`, { sessionKey });
@@ -248,7 +248,7 @@ test("sessions.reset preempts the controller run and clears queues", async () =>
     loadSessionEntry({ agentId: "main", sessionKey: "agent:main:main", storePath }),
   ).toMatchObject({
     sessionId: "sess-main",
-    ...parentGrant,
+    ...RESET_PARENT_GRANT_FIXTURE,
     ...preferences,
     sessionDiffBaselineCapture: {
       version: 1,
